@@ -1,0 +1,500 @@
+#### SSP related gene expression ####
+
+#### retrive rows of SSPs
+### SSP related genes
+version="a2v1" #version="a4v1" #version="a2v1_a4v1"
+a2v1SSPs="C:/Users/sulin/Desktop/SoySSP/SSP Exp Analysis/a2v1/a2v1_potential_SSPs_RNAseqid_2570.txt"
+a4v1SSPs="C:/Users/sulin/Desktop/SoySSP/SSP Exp Analysis/a4v1/a4v1_potential_SSPs_RNAseqid_1127.txt"
+a2v1a4v1SSPs="C:/Users/sulin/Desktop/SoySSP/SSP Exp Analysis/common/a2v1_a4v1_combined_SSPs_991_2706.txt"
+
+if(version=="a2v1")
+{
+con <- file(a2v1SSPs, "r", blocking = FALSE)
+SSPs= readLines(con)##
+close(con)
+#con <- file("Biosample_Tissues.txt", "r", blocking = FALSE)
+#Tissues= readLines(con)## GSE names in GPL4592
+#close(con)
+}else if(version=="a4v1")
+{
+con <- file(a4v1SSPs, "r", blocking = FALSE)
+SSPs= readLines(con)##
+close(con)
+}else
+{
+con <- file(a2v1a4v1SSPs, "r", blocking = FALSE)
+SSPs= readLines(con)##
+close(con)
+}
+
+
+##### SSPs in diff Tissues##########
+
+
+### R functions ####
+
+#### filter tissue specifity genes from Tau resuls
+TsG<-function(NorM,Tauvalue,thrsF)#NorM is fReplicateMean normalized matrix,thrsF if gene filter threshold thrsF=1 means strictly Tissue specifity expression, ie expression only in one Tissue/DeStage
+{
+GM<-matrix(list(),nrow = dim(NorM)[2], ncol =1)# GM is the genes in each Tiss/Devstage
+for(i in 1:length(geTau))
+{
+if(geTau[i]>=thrsF)
+{
+gExVs<-NorM[i,] # get all exp values of the gene 
+if(thrsF==1)
+{
+tempMax<-max(gExVs)
+indx<-which(gExVs==tempMax)
+temp<-c(GM[[indx]],rownames(NorM)[i])
+GM[[indx]]<-temp
+}else
+{
+tempQ<-quantile(gExVs)[4]# 75% quantile value
+indx2<-which(gExVs>tempQ[[1]])
+for(j in 1:length(indx2))
+{
+temp<-c(GM[[indx2[j]]],rownames(NorM)[i])
+GM[[indx2[j]]]<-temp
+}
+}
+}
+}
+return (GM)
+}
+
+#Function require a vector with expression of one gene in different tissues.
+#If expression for one tissue is not known, gene specificity for this gene is NA
+#Minimum 2 tissues
+fTau <- function(x)
+{
+	if(all(!is.na(x)))
+ 	{
+ 		if(min(x, na.rm=TRUE) >= 0)
+		{
+ 			if(max(x)!=0)
+ 			{
+ 				x <- (1-(x/max(x)))
+ 				res <- sum(x, na.rm=TRUE)
+ 				res <- res/(length(x)-1)
+ 			} else {
+ 				res <- 0
+ 			}
+ 		} else {
+ 		res <- NA
+ 		#print("Expression values have to be positive!")
+ 		} 
+ 	} else {
+ 		res <- NA
+ 		#print("No data for this gene avalable.")
+ 	} 
+ 	return(res)
+}
+TissuerpkmMean<-read.table("Tissue_rpkmMean.txt", header=T,row.names=1, sep="\t")
+SSPsTissuerpkmMean<-TissuerpkmMean[SSPs,]
+TissuesInterested<-c("opened.flower","unopened.flower","lateral.root","root","hairy.roots","nodule","leaf","seed","stem","shoot.tips")
+SSPsTissue<-SSPsTissuerpkmMean[,TissuesInterested]
+#write.table(SSPsTissue ,file="SSP_Tissue_rpkmMean.txt",row.names=T, sep="\t")
+#print(summary(SSPsTissue))
+geTau <- apply(SSPsTissue, 1, fTau) # 1 means row direction,get a one way vector, max 1 means genes only expressed in one tissue,genes with express value !=0.
+SSPTissueresults<-TsG(SSPsTissue,geTau,0.9)
+
+#Figures for Tissues Specific SSPs
+### Figure 1: geTau thrs change and tissue specific SSP number
+thrs<-c(1,0.95,0.9,0.85,0.8)
+SSPNum<-matrix(,nrow=length(TissuesInterested),ncol=length(thrs))
+col<-1 # col number
+for(val in thrs)
+{
+SSPTissueresults<-TsG(SSPsTissue,geTau,val)
+temp<-c()
+for(i in 1:length(SSPTissueresults))
+{
+temp<-c(temp,length(SSPTissueresults[[i]]))
+}
+SSPNum[,col]<-temp
+col<-col+1
+}
+rownames(SSPNum)<-TissuesInterested
+colnames(SSPNum)<-thrs
+#write.table(SSPNum,file="Tissue specific SSP number under diff thrs.txt",row.names=T,sep="\t")
+#barplot(SSPNum, beside=T,main="Tissue SSP specific number under different threshold", col=rainbow(length(TissuesInterested)),xlab="Tissues",ylab="SSP counts")#las change label direction)
+## we choose thrs=0.8 as others do.
+### Figure 2: Total number of SSPs detetected in Tissues, and their appear times
+SSPTissueresults<-TsG(SSPsTissue,geTau,0.9)
+write.table(SSPTissueresults,file=paste(version,"SSPTissueresults.txt",sep="_"),row.names=T,sep="\t")
+## xlab label not fullly displayed. how to solve:
+jpeg(filename = paste(version,"SSP number in each tissue.jpeg",sep=" "), width = 450, height = 300,pointsize =12, quality = 100, bg = "white")
+par(mar=c(8,4,4,4))# set margin bigger under xlab
+barplot(SSPNum[,3], beside=T,main=paste(version,"SSP number in each tissue threshold tau=0.9",sep=" "), col=rainbow(length(TissuesInterested)),ylab="counts",las=2,cex.names=1,cex.lab=1, cex.axis=1, cex.main=1, cex.sub=1,font.axis=2,font.lab=2)#las change label direction cex. change font size,font.axis: font: 1: normal, 2: bold, 3: italic, 4: bold ;cex.names change xlab font size
+dev.off()
+
+SSPApp<-c()
+for(i in 1:length(SSPTissueresults))
+{
+SSPApp<-c(SSPApp,SSPTissueresults[[i]])
+}
+TissSSP<-unique(SSPApp) ## with thrs=0.9 we get total 506 SSPs with Tissue specific
+Ap<-c()
+ApM<-matrix(,nrow=length(TissSSP),ncol=1)
+for(i in 1:length(TissSSP))
+{
+teminx<-which(SSPApp==TissSSP[i])
+Ap<-c(Ap,length(teminx))
+}
+ApM[,1]<-Ap
+rownames(ApM)<-TissSSP
+colnames(ApM)<-"Count"
+write.table(ApM,file=paste(version,"SSP Appearance Times in Tissues.txt",sep=" "),row.names=T,sep="\t")
+
+ApT<-unique(Ap)
+GApT<-c()
+GApTM<-matrix(,nrow=length(ApT),ncol=1)
+for(i in 1:length(ApT))
+{
+teminx<-which(Ap==ApT[i])
+GApT<-c(GApT,length(teminx))
+}
+GApTM[,1]<-GApT
+rownames(GApTM)<-ApT
+colnames(GApTM)<-"SSP Number"
+write.table(GApTM,file=paste(version,"SSP Appearance Times in Tissues statistic.txt",sep=" "),row.names=T,sep="\t")
+pct <- round(ApT/sum(ApT)*100)
+lbls <- paste(ApT," Tissues:", pct)
+lbls <- paste("Appear in ",lbls,"%",sep="") # ad % to labels 
+jpeg(filename = paste(version,"SSP appearance in how many considered tissues.jpeg",sep=" "), width = 600, height = 600,pointsize =12, quality = 100, bg = "white")
+par(mar=c(10,10,10,10))
+pie(GApTM,labels = lbls, col=rainbow(length(TissuesInterested)),main=paste(version,"SSP appearance in how many considered tissues",sep=" "))
+dev.off()
+
+#### Figure3: Common SSPs between any two tissues, clustered heatmap 
+ComSSPMatrix<-matrix(0,nrow = length(TissuesInterested), ncol =length(TissuesInterested))
+for(i in 1:length(SSPTissueresults))
+{
+for(j in i:length(SSPTissueresults))
+{
+temcom<-length(intersect(SSPTissueresults[[i]],SSPTissueresults[[j]]))
+if(i==j)
+{
+ComSSPMatrix[i,j]<-0 #length(TisSSP) all SSPs
+}else
+{
+ComSSPMatrix[i,j]<-temcom #length(TisSSP) all SSPs
+}
+#ComSSPMatrix[j,i]<-temcom
+}
+}
+#library("gplots")
+#result <- heatmap.2(mtscaled, Rowv=T, scale='none', dendrogram="row", symm = T, col = brewer.pal(9,"Reds"))
+#library(ComplexHeatmap)
+colnames(ComSSPMatrix)<-TissuesInterested
+rownames(ComSSPMatrix)<-TissuesInterested
+#Heatmap(ComSSPMatrix, name = "Common SSPs", row_names_gp = gpar(fontsize = 6),column_names_gp = gpar(fontsize = 6))
+#rownames(ComSSPMatrix)<-paste("T",(1:length(TissuesInterested)))
+#colnames(ComSSPMatrix)<-paste("T",(1:length(TissuesInterested)))
+write.table(ComSSPMatrix,file=paste(version,"TissueComSSPMatrix.txt",sep="_"),row.names=T,sep="\t")
+# use http://mkweb.bcgsc.ca/tableviewer/visualize/ this link to plot circos plot, rember to add label to results matrix and remove ""
+
+#### GO enrichment of each tissue specific SSPs
+library(topGO)
+geneID2GO <- readMappings(file = "C:/Users/sulin/Desktop/geneid2go2.map")
+probeNames <- names(geneID2GO)
+for(i in 1:length(SSPTissueresults))
+{
+AllDifg= SSPTissueresults[[i]]
+geneList <- factor(as.integer(probeNames %in% AllDifg))
+names(geneList) <- probeNames
+str(geneList)
+GOdata <- new("topGOdata", ontology = "BP", allGenes = geneList,annot = annFUN.gene2GO, gene2GO = geneID2GO)
+resultFisher <- runTest(GOdata, algorithm = "classic", statistic = "fisher")
+test.stat <- new("classicScore", testStatistic = GOKSTest, name = "KS tests")
+resultGO <- getSigGroups(GOdata, test.stat)
+test.stat <- new("weightCount", testStatistic = GOFisherTest, name = "Fisher test", sigRatio = "ratio")
+resultWeight <- getSigGroups(GOdata, test.stat)
+resulttopGO<- GenTable(GOdata, classic = resultFisher, KS = resultGO, weight = resultWeight,orderBy = "weight", ranksOf = "classic", topNodes = 20)
+write.table(resulttopGO[resulttopGO$classic<0.01,],file=paste(version," SSP_Tissue_",i,"_Gene_GO_Enrichment.txt",sep=""),row.names = FALSE, col.names =TRUE)
+}
+
+
+
+### for GEO microarray
+fReplicateMeangeo <- function(gcrma,SorName,thrs) #Thrs: threshold
+{
+x<-matrix(, nrow = dim(gcrma)[1], ncol =length(SorName))
+for(i in 1:length(SorName))
+{
+inx<-which(colnames(gcrma)==SorName[i])## get postions
+if(length(inx)>1)
+{
+x[,i]<-rowMeans(gcrma[,inx])# some Tiss/Devstages with only one sample
+}else
+{
+#print(i)
+x[,i]<-gcrma[,inx]
+}
+}
+colnames(x)<-SorName
+rownames(x)<-rownames(gcrma)
+x[x<thrs]<-0
+return(x)
+}
+
+
+#### SSP GEO analysis case 
+GEOgcrma<-read.table("GEO_gcrma_combined.txt", header=T,row.names=1, sep="\t")
+newff <- read.table("GEO_Combined_colnames.txt", head=F,sep="\t") #get Tiss/Dev corresponding names
+ffnew<-as.factor(newff$V1)
+colnames(GEOgcrma) <- ffnew
+con <- file("GEO_Combined_SourceNames.txt", "r", blocking = FALSE)
+geosource= readLines(con)##
+close(con)
+
+
+#### get sample number of each type of source
+TDnum<-c()
+for(i in 1:length(geosource))
+{
+inx<-which(colnames(GEOgcrma)==geosource[i])
+TDnum<-c(TDnum,length(inx))
+}
+###keep source with at least 3 samples
+inx3<-which(TDnum>=3)
+TDnum3<-TDnum[inx3]
+geosource3<-geosource[inx3]
+GEOgcrma3<-GEOgcrma[,inx3] # keep source have at least 3 samples
+colnames(GEOgcrma3)<-geosource3
+TDnum<-c()
+for(i in 1:length(geosource3))
+{
+inx<-which(colnames(GEOgcrma3)==geosource3[i])
+TDnum<-c(TDnum,length(inx))
+}
+
+par(mar=c(22,4,4,4))# set margin bigger under xlab
+xx<-barplot(TDnum3,horiz=F,main="Sample number of each source", ylab="Counts", col=rainbow(length(geosource3)),names.arg=geosource3,las=2,cex.names=0.75,cex.lab=1, cex.axis=1, cex.main=1, cex.sub=1,font.axis=1,font.lab=2)#las change label direction cex. change font size,font.axis: font: 1: normal, 2: bold, 3: italic, 4: bold ;cex.names change xlab font size
+text(x = xx, y = TDnum, label = TDnum, pos = 3, cex = 0.4, col = "red")# add values on each bar top
+pie(TDnum3,labels = geosource3, col=rainbow(length(geosource3)),main="Sample Number of each source")
+
+
+#GEOgcrmamean<-fReplicateMeangeo(GEOgcrma,geosource,1)
+write.table(GEOgcrmamean ,file="GEOgcrmamean.txt",row.names=T, sep="\t")
+print(summary(GEOgcrmamean))
+geTau <- apply(GEOgcrmamean, 1, fTau) # 1 means row direction,get a one way vector, max 1 means genes only expressed in one tissue,genes with express value !=0.
+
+con <- file("SSPaffyid_in_GEO.txt", "r", blocking = FALSE)
+SSPaffys= readLines(con)##
+close(con)
+SSPGEOgcrmaMean<-GEOgcrmamean[SSPaffys,]
+write.table(SSPGEOgcrmaMean ,file="SSPGEOgcrmaMean.txt",row.names=T, sep="\t")
+SSPGEOgcrmaMean <- read.table("SSPGEOgcrmaMean.txt", row.names=1,head=T,sep="\t") #get Tiss/Dev corresponding names
+SSPGEOgcrmaMean<-as.matrix(SSPGEOgcrmaMean)
+
+geTau <- apply(SSPGEOgcrmaMean, 1, fTau) # 1 means row direction,get a one way vector, max 1 means genes only expressed in one tissue,genes with express value !=0.
+SSPGEOresults<-TsG(SSPGEOgcrmaMean,geTau,0.9)
+write.table(SSPGEOresults,file="SSPGEOresults.txt",row.names=T,sep="\t")
+
+#Figures for GEO source Specific SSPs
+### Figure 1: geTau thrs change and devstages specific gene number
+thrs<-c(1,0.95,0.9,0.85,0.8)
+SSPNum<-c()
+for(val in thrs)
+{
+SSPGEOresults<-TsG(SSPGEOgcrmaMean,geTau,val)
+for(i in 1:length(SSPGEOresults))
+{
+SSPNum<-c(SSPNum,length(SSPGEOresults[[i]]))
+}
+}
+## we choose thrs=0.8 as others do.
+### Figure 2: Total number of SSPs detetected in GEO source, and their appear times
+SSPGEOresults<-TsG(SSPGEOgcrmaMean,geTau,0.8)
+#write.table(SSPGEOresults,file="SSPGEOresults.txt",row.names=T,sep="\t")
+GApp<-c()
+for(i in 1:length(SSPGEOresults))
+{
+GApp<-c(GApp,SSPGEOresults[[i]])
+}
+SourceGene<-unique(GApp) ## with thrs=0.9 we get total 5838 genes with Develop stages specific
+length(SourceGene)
+Ap<-c()
+ApM<-matrix(,nrow=length(SourceGene),ncol=1)
+for(i in 1:length(SourceGene))
+{
+teminx<-which(GApp==SourceGene[i])
+Ap<-c(Ap,length(teminx))
+}
+ApM[,1]<-Ap
+rownames(ApM)<-SourceGene
+colnames(ApM)<-"Count"
+write.table(ApM,file="Gene Appearance Times in source.txt",row.names=T,sep="\t")
+
+
+ApT<-unique(Ap)
+GApT<-c()
+GApTM<-matrix(,nrow=length(ApT),ncol=1)
+for(i in 1:length(ApT))
+{
+teminx<-which(Ap==ApT[i])
+GApT<-c(GApT,length(teminx))
+}
+GApTM[,1]<-GApT
+rownames(GApTM)<-ApT
+colnames(GApTM)<-"SSP Number"
+write.table(GApTM,file="Gene Appearance Times in source statistic.txt",row.names=T,sep="\t")
+pie(GApTM,labels = ApT, col=rainbow(length(geosource)),main="SSP appearance times statistic")
+
+
+#### Figure3: Common SSPs between any two development stages, clustered heatmap 
+ComSSPMatrix<-matrix(0,nrow = length(geosource3), ncol =length(geosource3))
+for(i in 1:length(SSPGEOresults))
+{
+for(j in i:length(SSPGEOresults))
+{
+temcom<-length(intersect(SSPGEOresults[[i]],SSPGEOresults[[j]]))
+ComSSPMatrix[i,j]<-temcom #length(GEOSSP) all SSPs
+ComSSPMatrix[j,i]<-temcom
+}
+}
+library("gplots")
+#result <- heatmap.2(mtscaled, Rowv=T, scale='none', dendrogram="row", symm = T, col = brewer.pal(9,"Reds"))
+library(ComplexHeatmap)
+colnames(ComSSPMatrix)<-geosource3
+rownames(ComSSPMatrix)<-geosource3
+Heatmap(ComSSPMatrix, name = "Common SSPs", row_names_gp = gpar(fontsize = 2),column_names_gp = gpar(fontsize = 2))
+
+
+#### GO enrichment of each Developstages specific SSPs
+library(topGO)
+geneID2GO <- readMappings(file = "C:/Users/sulin/Desktop/geneid2go.map")
+probeNames <- names(geneID2GO)
+for(i in 647:length(SSPGEOresults))
+{
+AllDifg= SSPGEOresults[[i]]
+if(length(AllDifg)>0)
+{
+geneList <- factor(as.integer(probeNames %in% AllDifg))
+names(geneList) <- probeNames
+str(geneList)
+GOdata <- new("topGOdata", ontology = "BP", allGenes = geneList,annot = annFUN.gene2GO, gene2GO = geneID2GO)
+resultFisher <- runTest(GOdata, algorithm = "classic", statistic = "fisher")
+test.stat <- new("classicScore", testStatistic = GOKSTest, name = "KS tests")
+resultGO <- getSigGroups(GOdata, test.stat)
+test.stat <- new("weightCount", testStatistic = GOFisherTest, name = "Fisher test", sigRatio = "ratio")
+resultWeight <- getSigGroups(GOdata, test.stat)
+resulttopGO<- GenTable(GOdata, classic = resultFisher, KS = resultGO, weight = resultWeight,orderBy = "weight", ranksOf = "classic", topNodes = 20)
+write.table(resulttopGO[resulttopGO$classic<0.01,],file=paste("SSP_GEO_",i,"_Gene_GO_Enrichment.txt",sep=""),row.names = FALSE, col.names =TRUE)
+}
+}
+
+
+
+#### GO enrichment of each tissue specific SSPs
+library(topGO)
+geneID2GO <- readMappings(file = "C:/Users/sulin/Desktop/geneid2go2.map")
+probeNames <- names(geneID2GO)
+for(i in 1:length(SSPDSresults))
+{
+AllDifg= SSPDSresults[[i]]
+geneList <- factor(as.integer(probeNames %in% AllDifg))
+names(geneList) <- probeNames
+str(geneList)
+GOdata <- new("topGOdata", ontology = "BP", allGenes = geneList,annot = annFUN.gene2GO, gene2GO = geneID2GO)
+resultFisher <- runTest(GOdata, algorithm = "classic", statistic = "fisher")
+test.stat <- new("classicScore", testStatistic = GOKSTest, name = "KS tests")
+resultGO <- getSigGroups(GOdata, test.stat)
+test.stat <- new("weightCount", testStatistic = GOFisherTest, name = "Fisher test", sigRatio = "ratio")
+resultWeight <- getSigGroups(GOdata, test.stat)
+resulttopGO<- GenTable(GOdata, classic = resultFisher, KS = resultGO, weight = resultWeight,orderBy = "weight", ranksOf = "classic", topNodes = 20)
+write.table(resulttopGO[resulttopGO$classic<0.01,],file=paste("SSP_Tissue_",i,"_Gene_GO_Enrichment.txt",sep=""),row.names = FALSE, col.names =TRUE)
+}
+
+
+
+
+
+
+
+
+
+
+#### get sample number of each type of Tissue/Devstage
+TDnum<-c()
+for(i in 1:length(DeStages))
+{
+inx<-which(colnames(rpkmMatrix)==DeStages[i])
+TDnum<-c(TDnum,length(inx))
+}
+barplot(TDnum)
+pie(TDnum)
+
+###tissue
+Tisnum<-c()
+for(i in 1:length(TissuesInterested))
+{
+inx<-which(colnames(rpkmMatrix)==Tissues[i])
+Tisnum<-c(Tisnum,length(inx))
+}
+barplot(Tisnum)
+pie(Tisnum)
+
+
+#### end
+
+
+
+
+###***###***###
+test<-fReplicateMean(rpkmMatrix3,DeStages2,1)
+print(summary(test))
+geTau <- apply(test, 1, fTau) # 1 means row direction,get a one way vector, max 1 means genes only expressed in one tissue,genes with express value !=0.
+#test$Tau <- apply(orgExpression[,c(paste("Averaged.RPKM.", Tissues[1:nTissues], sep=""))], 1, fTau)
+
+
+
+
+##### find common elements
+com<-intersect(GMresults[58],GMresults[58])
+
+
+
+###### GEO datasets #reference site: https://wiki.bits.vib.be/index.php/Differential_expression_for_more_than_two_groups
+library(gcrma)
+library(affy)
+library(limma)
+mydata <- ReadAffy()
+eset <- gcrma(mydata)
+#gcrma<-data.matrix(eset)
+gcrma<-exprs(eset)
+write.table(matrix ,file=paste(GEOID,"_Exp_rma.txt",sep=""),row.names=T, sep="\t")
+
+gcrmaM<-NULL
+Files<-list.files()
+Num<-ceiling(length(Files)/100)
+for(i in 1:Num)
+{
+setwd("/Users/sulingtao/Desktop/Test1")
+dir.create("TemDir")
+begin<-(i-1)*100+1
+end<-begin+99
+if(begin<length(Files) & end<length(Files))
+{
+file.copy(Files[begin:end],"TemDir")
+setwd("/Users/sulingtao/Desktop/Test1/TemDir")
+mydata <- ReadAffy()
+eset <- gcrma(mydata)
+#gcrma<-data.matrix(eset)
+gcrma<-exprs(eset)
+gcrmaM<-cbind(gcrmaM,gcrma)
+unlink(getwd(), recursive = TRUE)
+}else
+{
+file.copy(Files[begin:length(Files)],"TemDir")
+setwd("/Users/sulingtao/Desktop/Test1/TemDir")
+mydata <- ReadAffy()
+eset <- gcrma(mydata)
+#gcrma<-data.matrix(eset)
+gcrma<-exprs(eset)
+gcrmaM<-cbind(gcrmaM,gcrma)
+unlink(getwd(), recursive = TRUE)
+}
+}
